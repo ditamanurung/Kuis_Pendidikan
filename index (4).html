@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KUUIIIZZZZ</title>
+<style>
+:root{--bg:#3b1e78;--bg2:#5b2fae;--ink:#2a1a4d;--gold:#ffd23f;--c0:#e5484d;--c1:#3b82f6;--c2:#d98a00;--c3:#15803d}
+*{box-sizing:border-box}
+body{margin:0;font:17px/1.4 system-ui,sans-serif;background:radial-gradient(circle at 50% 0%,var(--bg2),var(--bg) 70%);color:#fff;display:flex;justify-content:center;min-height:100vh}
+main{width:100%;max-width:760px;padding:20px}
+.brand{display:flex;flex-direction:column;align-items:center;gap:6px;margin:.4em 0 .8em;text-align:center}
+.brand svg{width:140px;height:140px;flex:none}
+h1{font-size:2.6rem;margin:0;letter-spacing:.04em;color:var(--gold);text-shadow:0 2px 0 rgba(0,0,0,.25)}
+input,textarea,button{font:inherit;border-radius:10px;border:0;padding:13px;width:100%;margin-top:10px}
+input,textarea{background:#fff;color:var(--ink)}
+button{background:var(--gold);color:var(--ink);font-weight:700;cursor:pointer}
+button:disabled{opacity:.5}
+button.alt{background:transparent;color:#fff;border:2px solid var(--gold)}
+.back{width:auto;display:inline-block;padding:8px 14px;margin:0 0 10px;background:transparent;border:2px solid #fff;font-size:.95rem}
+.code{font-size:4.5rem;font-weight:800;letter-spacing:.15em;background:#fff;color:var(--ink);border-radius:14px;text-align:center;padding:10px}
+.qrbox{background:#fff;padding:10px;border-radius:12px;display:inline-block;margin-top:10px}
+.q{font-size:1.6rem;font-weight:700;margin:12px 0}
+.tm{font-size:2.4rem;font-weight:800;text-align:right}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.opt{color:#fff;padding:26px 12px;font-size:1.1rem;margin:0;text-align:left}
+.c0{background:var(--c0)}.c1{background:var(--c1)}.c2{background:var(--c2)}.c3{background:var(--c3)}
+.opt.dim{opacity:.3}
+.big{font-size:2rem;font-weight:800;margin:.4em 0}
+ol{padding-left:1.3em}li{margin:.3em 0;font-size:1.15rem}
+.err{color:#ffb4b4}
+.podium{display:flex;align-items:flex-end;justify-content:center;gap:10px;margin:18px 0}
+.podium .slot{background:#fff;color:var(--ink);border-radius:14px 14px 0 0;padding:14px 8px 10px;text-align:center;font-weight:800;flex:1;max-width:150px}
+.podium .medal{font-size:2.2rem;display:block;line-height:1}
+.podium .p1{order:2;background:var(--gold);min-height:170px;padding-top:14px}
+.podium .p2{order:1;min-height:120px;align-self:flex-end}
+.podium .p3{order:3;min-height:95px;align-self:flex-end}
+.confetti{position:fixed;top:-12px;width:8px;height:14px;opacity:.9;animation:fall linear forwards;z-index:9;pointer-events:none}
+@keyframes fall{to{transform:translateY(105vh) rotate(360deg);opacity:0}}
+.cdOverlay{position:fixed;inset:0;background:rgba(43,30,94,.94);display:flex;align-items:center;justify-content:center;font-size:7rem;font-weight:900;color:var(--gold);z-index:20;text-shadow:0 4px 0 rgba(0,0,0,.3)}
+.cdOverlay.pop{animation:pop .5s ease}
+@keyframes pop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@media(max-width:480px){.opts{grid-template-columns:1fr}.code{font-size:3rem}}
+</style></head>
+<body><main id="app"></main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const $ = s => document.querySelector(s), app = $('#app');
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const post = (u, b) => fetch(u, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(b)}).then(r => r.json());
+const SH = ['▲','◆','●','■'];
+let S, role, code, id, t0, es, Q = [], curTime = 20, savedResult = false;
+
+function connect() {
+  if (es) es.close();
+  if (waitTimer) { clearInterval(waitTimer); waitTimer = null; }
+  if (tenseTimer) { clearInterval(tenseTimer); tenseTimer = null; }
+  savedResult = false; lastKey = null; lastTick = null; lastN = null;
+  es = new EventSource(`/events?code=${code}&pid=${id}`);
+  es.onmessage = e => { S = JSON.parse(e.data); t0 = Date.now(); soundFor(S); draw(); };
+}
+setInterval(() => {
+  const el = $('#tm'); if (!el || !S) return;
+  const secs = Math.max(0, Math.ceil((S.ms - (Date.now() - t0)) / 1000));
+  el.textContent = secs;
+  if (S.phase === 'question' && secs > 0 && secs <= 3 && secs !== lastTick) { lastTick = secs; sndTick(); }
+  if (role === 'host' && S.phase === 'question' && secs <= 5 && !tenseFast && tenseTimer) {
+    tenseFast = true; clearInterval(tenseTimer); tenseTimer = setInterval(tenseTick, 140);
+  }
+}, 250);
+
+const opts = (q, click, cor, cnt) => `<div class=opts>${q.options.map((o, k) =>
+  `<button class="opt c${k}${cor != null && k !== cor ? ' dim' : ''}" ${click ? `data-k=${k}` : 'disabled'}>${SH[k]} ${esc(o)}${cnt ? ` <b>(${cnt[k]})</b>` : ''}</button>`).join('')}</div>`;
+const board = b => `<ol>${b.map(p => `<li>${esc(p.name)} — <b>${p.score}</b></li>`).join('')}</ol>`;
+const medal = (p, cls, m) => p ? `<div class="slot ${cls}"><span class=medal>${m}</span>${esc(p.name)}<br>${p.score}</div>` : '';
+const podium = a => `<div class=podium>${medal(a[0], 'p1', '🥇')}${medal(a[1], 'p2', '🥈')}${medal(a[2], 'p3', '🥉')}</div>`;
+
+let ac, lastKey = null, lastTick = null, lastN = null, waitTimer = null;
+function unlock() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); }
+function beep(freq, dur, type = 'sine', vol = .22, t = 0) {
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain(), at = ac.currentTime + t;
+  o.type = type; o.frequency.value = freq; o.connect(g); g.connect(ac.destination);
+  g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(.001, at + dur);
+  o.start(at); o.stop(at + dur + .02);
+}
+const sndGo = () => [523, 659, 784].forEach((f, i) => beep(f, .14, 'triangle', .18, i * .09));
+const sndTick = () => beep(880, .07, 'square', .1);
+const sndCorrect = () => [660, 880, 1100].forEach((f, i) => beep(f, .13, 'sine', .2, i * .08));
+const sndWrong = () => beep(170, .3, 'sawtooth', .18);
+const sndFanfare = () => [523, 659, 784, 1046, 784, 1046].forEach((f, i) => beep(f, .22, 'triangle', .2, i * .13));
+const sndJoin = () => [988, 1318].forEach((f, i) => beep(f, .09, 'sine', .14, i * .06));
+const sndReady = () => [659, 988].forEach((f, i) => beep(f, .16, 'triangle', .16, i * .1));
+const WAIT_MOTIFS = [[392, 523, 659], [440, 554, 659], [523, 659, 784]];
+let waitStep = 0;
+const sndWait = () => {
+  const m = WAIT_MOTIFS[waitStep++ % WAIT_MOTIFS.length];
+  m.forEach((f, i) => { beep(f, .4, 'sine', .055, i * .16); beep(f * 2, .3, 'sine', .018, i * .16); });
+};
+
+function manageWait(s) {
+  const waiting = role === 'player' && (s.phase === 'lobby' || (s.phase === 'question' && s.you && s.you.choice != null));
+  if (waiting && !waitTimer) { waitStep = 0; waitTimer = setInterval(sndWait, 3600); sndWait(); }
+  else if (!waiting && waitTimer) { clearInterval(waitTimer); waitTimer = null; }
+}
+
+const TENSE = [196, 196, 233, 196, 220, 196, 233, 294];
+let tenseTimer = null, tenseStep = 0, tenseFast = false;
+function tenseTick() {
+  const f = TENSE[tenseStep % TENSE.length];
+  beep(f, .16, 'square', .055);
+  if (tenseStep % 4 === 0) beep(f * 2, .1, 'triangle', .04, .03);
+  tenseStep++;
+}
+function startTense() { stopTense(); tenseStep = 0; tenseFast = false; tenseTimer = setInterval(tenseTick, 230); }
+function stopTense() { if (tenseTimer) { clearInterval(tenseTimer); tenseTimer = null; } }
+
+function confetti() {
+  const colors = ['#ffd23f', '#e5484d', '#3b82f6', '#15803d', '#fff'];
+  for (let i = 0; i < 70; i++) {
+    const d = document.createElement('div');
+    d.className = 'confetti'; d.style.left = Math.random() * 100 + 'vw';
+    d.style.background = colors[i % colors.length];
+    d.style.animationDuration = (2 + Math.random() * 1.6) + 's';
+    d.style.animationDelay = (Math.random() * .5) + 's';
+    document.body.appendChild(d); setTimeout(() => d.remove(), 4200);
+  }
+}
+function soundFor(s) {
+  manageWait(s);
+  if (role === 'host' && s.phase === 'lobby') { if (lastN !== null && s.n > lastN) sndJoin(); lastN = s.n; }
+  const key = s.phase + '_' + s.i; if (key === lastKey) return; lastKey = key; lastTick = null;
+  if (s.phase === 'lobby' && role === 'host') sndReady();
+  else if (s.phase === 'question') { sndGo(); if (role === 'host') setTimeout(startTense, 500); }
+  else if (s.phase === 'reveal') { stopTense(); if (role === 'player' && s.you && s.q) (s.you.choice === s.q.correct ? sndCorrect() : sndWrong()); else sndGo(); }
+  else if (s.phase === 'end') { stopTense(); sndFanfare(); confetti(); }
+}
+const act = () => { unlock(); post('/act', {code, key:id}); };
+function startCountdown(cb) {
+  unlock();
+  const ov = document.createElement('div'); ov.className = 'cdOverlay';
+  document.body.appendChild(ov);
+  let n = 3;
+  const pop = () => { ov.classList.remove('pop'); void ov.offsetWidth; ov.classList.add('pop'); };
+  const tick = () => {
+    if (n > 0) { ov.textContent = n; pop(); sndTick(); n--; setTimeout(tick, 700); }
+    else { ov.textContent = 'Mulai!!'; pop(); sndGo(); setTimeout(() => { ov.remove(); cb(); }, 700); }
+  };
+  tick();
+}
+const LOGO = `<svg viewBox="0 0 160 160" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="72" cy="86" r="58" fill="#ffd23f"/>
+  <path d="M38 64q6-16 24-16t24 16" stroke="#2a1a4d" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <path d="M90 64q6-16 24-16t24 16" stroke="#2a1a4d" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <circle cx="54" cy="78" r="17" fill="#fff" stroke="#2a1a4d" stroke-width="5"/>
+  <circle cx="54" cy="78" r="7" fill="#2a1a4d"/>
+  <circle cx="104" cy="78" r="17" fill="#fff" stroke="#2a1a4d" stroke-width="5"/>
+  <circle cx="104" cy="78" r="7" fill="#2a1a4d"/>
+  <line x1="71" y1="78" x2="87" y2="78" stroke="#2a1a4d" stroke-width="5"/>
+  <path d="M70 118q16 10 32 0" stroke="#2a1a4d" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <path d="M26 112q-20 10-22 34 14-6 26-18z" fill="#ffb648" stroke="#2a1a4d" stroke-width="5"/>
+  <g>
+    <circle cx="124" cy="24" r="22" fill="#fff" stroke="#3b82f6" stroke-width="5"/>
+    <circle cx="105" cy="46" r="7" fill="#fff" stroke="#3b82f6" stroke-width="4"/>
+    <circle cx="94" cy="58" r="4" fill="#fff" stroke="#3b82f6" stroke-width="3"/>
+    <text x="124" y="32" font-size="26" text-anchor="middle" fill="#3b82f6" font-weight="800" font-family="system-ui,sans-serif">?</text>
+  </g></svg>`;
+const brand = () => `<div class=brand>${LOGO}<h1>KUUIIIZZZZ</h1></div>`;
+const tgl = ts => new Date(ts).toLocaleString('id-ID', {dateStyle:'medium', timeStyle:'short'});
+const store = (k, v) => { if (v !== undefined) return localStorage.setItem(k, JSON.stringify(v));
+  try { return JSON.parse(localStorage.getItem(k) || '[]'); } catch { return []; } };
+const addHist = (k, entry) => store(k, [entry, ...store(k)].slice(0, 15));
+
+async function launch(qs, time, shuffle) {
+  unlock();
+  const r = await post('/create', {qs, time, shuffle});
+  if (r.error) return alert(r.error);
+  Q = qs; curTime = time; role = 'host'; code = r.code; id = r.key; connect();
+}
+
+function home() {
+  const sets = store('kk_qsets'), res = store('kk_results');
+  app.innerHTML = `${brand()}<h3>Peserta?</h3><p>Yuk gabung kuis di bawah ini</p>
+  <input id=c placeholder="Kode kuis" inputmode=numeric><input id=n placeholder="Nama kamu" maxlength=20>
+  <button id=j>Gabung</button><h3>Guru?</h3><button id=m class=alt>Buat kuis baru</button>
+  ${sets.length ? `<h3>Ulangi kuis sebelumnya</h3>${sets.map((s, i) =>
+    `<button class=alt data-rep=${i}>${esc(s.label)} · ${s.qs.length} soal · ${tgl(s.ts)}</button>`).join('')}` : ''}
+  ${res.length ? `<h3>Riwayat hasil kuis</h3>${res.map((r, i) =>
+    `<button class=alt data-res=${i}>${esc(r.label)} · ${r.rows.length} peserta · ${tgl(r.ts)}</button>`).join('')}` : ''}
+  <p id=e class=err></p>`;
+  $('#m').onclick = create;
+  $('#j').onclick = async () => {
+    unlock();
+    const c = $('#c').value.trim(), r = await post('/join', {code:c, name:$('#n').value});
+    if (r.error) return $('#e').textContent = r.error;
+    role = 'player'; code = c; id = r.id; connect();
+  };
+  app.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => {
+    const s = sets[+b.dataset.rep]; launch(s.qs, s.time, s.shuffle);
+  });
+  app.querySelectorAll('[data-res]').forEach(b => b.onclick = () => {
+    const r = res[+b.dataset.res];
+    const ws = XLSX.utils.aoa_to_sheet([['Peringkat','Nama','Skor'], ...r.rows.map((p, i) => [i + 1, p.name, p.score])]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Hasil'); XLSX.writeFile(wb, `hasil-${r.label}.xlsx`);
+  });
+}
+function parseRows(rows) {
+  const L = 'ABCD';
+  return rows.map(r => {
+    r = r.map(x => String(x ?? '').trim());
+    const o = r.slice(1, 5); while (o.length && !o[o.length - 1]) o.pop();
+    const a = r[5] || '';
+    const k = /^[A-D]$/i.test(a) ? L.indexOf(a.toUpperCase()) : /^[1-4]$/.test(a) ? +a - 1 : o.findIndex(x => x.toLowerCase() === a.toLowerCase());
+    return r[0] && o.length >= 2 && k >= 0 && k < o.length && o[k] ? {text:r[0], options:o, correct:k} : null;
+  }).filter(Boolean);
+}
+function create() {
+  Q = [];
+  app.innerHTML = `<button class=back id=bk>← Kembali</button>${brand()}<h3>Buat kuis</h3>
+  <p>Unggah file Excel dengan kolom: <b>Soal, Pilihan A, Pilihan B, Pilihan C, Pilihan D, Jawaban</b> (isi Jawaban dengan huruf A–D). Baris judul boleh ada.</p>
+  <button id=tpl class=alt>Unduh contoh template</button>
+  <input id=f type=file accept=".xlsx,.xls,.csv">
+  <p id=info></p>
+  <p>Waktu per soal (detik)</p><input id=s type=number value=20 min=5 max=120>
+  <label><input id=sh type=checkbox style="width:auto;margin-right:8px">Acak urutan pilihan</label>
+  <button id=b disabled>Buat kuis dan tampilkan kode</button><p id=e class=err></p>`;
+  $('#bk').onclick = home;
+  $('#tpl').onclick = () => {
+    if (!window.XLSX) return $('#e').textContent = 'Pustaka Excel gagal dimuat. Periksa koneksi internet.';
+    const ws = XLSX.utils.aoa_to_sheet([['Soal','Pilihan A','Pilihan B','Pilihan C','Pilihan D','Jawaban'],
+      ['Apa kepanjangan STP?','Segmentasi, Targeting, Positioning','Sales, Trade, Promotion','Strategy, Tactics, Planning','Survey, Testing, Pricing','A'],
+      ['Manakah yang termasuk 4P?','Persona','Profit','Product','Panel','C']]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Soal'); XLSX.writeFile(wb, 'template-kuis.xlsx');
+  };
+  $('#f').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    if (!window.XLSX) return $('#e').textContent = 'Pustaka Excel gagal dimuat. Periksa koneksi internet.';
+    const wb = XLSX.read(await f.arrayBuffer());
+    Q = parseRows(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, defval:''}));
+    $('#e').textContent = '';
+    $('#info').textContent = Q.length ? `${Q.length} soal terbaca dari ${f.name}` : 'Tidak ada soal yang valid. Cek urutan kolom dan isi kolom Jawaban.';
+    $('#b').disabled = !Q.length;
+  };
+  $('#b').onclick = async () => {
+    unlock();
+    const time = +$('#s').value, shuffle = $('#sh').checked, label = Q[0].text.slice(0, 40);
+    const r = await post('/create', {qs:Q, time, shuffle});
+    if (r.error) return $('#e').textContent = r.error;
+    addHist('kk_qsets', {label, qs:Q, time, shuffle, ts:Date.now()});
+    curTime = time; role = 'host'; code = r.code; id = r.key; connect();
+  };
+}
+function draw() {
+  const s = S, q = s.q, y = s.you;
+  if (role === 'host') {
+    if (s.phase === 'lobby') { app.innerHTML = `<p>Buka halaman ini di HP dan masukkan kode:</p><div class=code>${code}</div>
+      <p>atau scan untuk membuka halamannya:</p><div class=qrbox id=qr></div>
+      <p><b>${s.n}</b> pemain sudah masuk</p><button id=go ${s.n ? '' : 'disabled'}>Mulai kuis</button>`; $('#go').onclick = () => startCountdown(act);
+      if (window.QRCode) new QRCode($('#qr'), {text: location.origin + location.pathname, width: 150, height: 150, colorDark: '#2a1a4d', colorLight: '#ffffff'}); }
+    else if (s.phase === 'question') { app.innerHTML = `<div class=tm id=tm></div><div class=q>${s.i + 1}/${s.total}. ${esc(q.text)}</div>
+      ${opts(q)}<p>${s.answered}/${s.n} sudah menjawab</p><button id=go class=alt>Lewati waktu</button>`; $('#go').onclick = act; }
+    else if (s.phase === 'reveal') { app.innerHTML = `<div class=q>${esc(q.text)}</div>${opts(q, 0, q.correct, s.counts)}
+      <h3>Papan skor</h3>${board(s.board)}<button id=go>${s.i + 1 >= s.total ? 'Lihat hasil akhir' : 'Soal berikutnya'}</button>`; $('#go').onclick = act; }
+    else {
+      if (!savedResult) { savedResult = true; addHist('kk_results', {label: Q[0] ? Q[0].text.slice(0, 40) : code, rows: s.all, ts:Date.now()}); }
+      app.innerHTML = `${brand()}<h3>Hasil akhir</h3>${podium(s.all)}${board(s.all)}
+      <button id=dl>Unduh hasil (Excel)</button>
+      <button id=rp class=alt>Ulangi kuis ini (kode baru)</button>
+      <button class=alt onclick=location.reload()>Selesai</button>`;
+      $('#dl').onclick = () => {
+        const ws = XLSX.utils.aoa_to_sheet([['Peringkat','Nama','Skor'], ...s.all.map((p, i) => [i + 1, p.name, p.score])]);
+        const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Hasil'); XLSX.writeFile(wb, 'hasil-kuis.xlsx');
+      };
+      $('#rp').onclick = () => launch(Q, curTime, false);
+    }
+    return;
+  }
+  if (s.phase === 'lobby') app.innerHTML = `<h1>Halo, ${esc(y.name)}!</h1><p>Kamu sudah masuk. Tunggu guru memulai kuis.</p>`;
+  else if (s.phase === 'question') {
+    app.innerHTML = y.choice == null ? `<div class=tm id=tm></div><p>Soal ${s.i + 1}/${s.total}</p>${opts(q, 1)}`
+      : `<div class=big>Jawaban terkirim</div><p>Menunggu yang lain...</p>`;
+    app.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { unlock(); post('/answer', {code, id, k:+b.dataset.k}); });
+  } else if (s.phase === 'reveal') {
+    const ok = y.choice === q.correct;
+    app.innerHTML = `<div class=big>${y.choice == null ? 'Waktu habis' : ok ? 'Benar!' : 'Kurang tepat'}</div>
+      <p>${ok ? '+' + y.gain + ' poin' : 'Jawaban benar: ' + esc(q.options[q.correct])}</p>
+      <p>Skor <b>${y.score}</b> · Peringkat <b>${y.rank}</b> dari ${s.n}</p>`;
+  } else app.innerHTML = `${brand()}${y.rank <= 3 ? `<div class=podium>${medal({name:y.name, score:y.score}, 'p' + y.rank, y.rank === 1 ? '🥇' : y.rank === 2 ? '🥈' : '🥉')}</div>` : ''}
+    <div class=big>${y.rank <= 3 ? 'Selamat!' : 'Selesai!'} Peringkat ${y.rank} dari ${s.n}</div><p>Skor akhir: <b>${y.score}</b></p>`;
+}
+home();
+</script></body></html>
